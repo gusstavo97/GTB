@@ -112,7 +112,8 @@ class TradingBot:
 
             if signal:
                 sl, tp = self.calculate_sl_tp(current_price, signal, atr_value)
-                msg = f"{'\ud83d\udcc8' if signal == 'LONG' else '\ud83d\udcc9'} *Se\u00f1al {signal} Detectada*\n\n"
+                emoji = '📈' if signal == 'LONG' else '📉'
+                msg = f"{emoji} *Señal {signal} Detectada*\n\n"
                 msg += f"Precio actual: ${current_price:.2f}\n"
                 msg += f"EMA 13: ${last['ema_13']:.2f} | EMA 55: ${last['ema_55']:.2f}\n"
                 msg += f"ATR: ${atr_value:.2f}\n\n"
