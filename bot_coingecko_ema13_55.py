@@ -11,11 +11,10 @@ coingecko_api_key = os.getenv('COINGECKO_API_KEY')
 if coingecko_api_key:
     coingecko_api_key = coingecko_api_key.strip()
 
-def send_telegram_message(text):
-    """Send message to Telegram bot"""
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+def send_telegram_message(self, text):
+    url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
     payload = {
-        "chat_id": chat_id,
+        "chat_id": self.chat_id,
         "text": text,
         "parse_mode": "Markdown"
     }
@@ -24,9 +23,9 @@ def send_telegram_message(text):
         if response.status_code == 200:
             print("✅ Mensaje enviado a Telegram")
         else:
-            print(f"❌ Error enviando mensaje a Telegram: {response.status_code}")
+            print(f"❌ Error enviando mensaje: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"❌ Error enviando mensaje a Telegram: {e}")
+        print(f"❌ Error enviando mensaje: {e}")
 
 def get_btc_price():
     """Get current BTC price from CoinGecko"""
