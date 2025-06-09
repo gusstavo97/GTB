@@ -13,7 +13,7 @@ bot_running = False
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return "<h2>🚀 Bot de Trading EMA 13/55 - ONLINE</h2>"
 
 @app.route('/api/status')
 def get_status():
@@ -46,24 +46,21 @@ def get_signals():
 
 @app.route('/api/start_bot', methods=['POST'])
 def start_bot():
-    send_telegram_message("🟢 Bot iniciado correctamente. Probando conexión con Telegram.")
     global trading_bot, bot_thread, bot_running
-    
+
     if bot_running:
         return jsonify({'error': 'Bot is already running'}), 400
-    
+
     try:
-        # Get credentials from environment variables
-        bot_token = os.getenv('TELEGRAM_BOT_TOKEN', '7274514132:AAFdt_Vr48MyKmJigy0WSNWrkgy6LWB1LI4')
-        chat_id = int(os.getenv('TELEGRAM_CHAT_ID', '5253696321'))
-        
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        chat_id = int(os.getenv('TELEGRAM_CHAT_ID'))
+
         trading_bot = TradingBot(bot_token, chat_id)
         bot_running = True
-        
-        # Start bot in separate thread
+
         bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
         bot_thread.start()
-        
+
         return jsonify({'message': 'Bot started successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -79,7 +76,7 @@ def run_bot_loop():
     while bot_running:
         try:
             trading_bot.check_signal()
-            time.sleep(60)  # Check every minute
+            time.sleep(60)
         except Exception as e:
             print(f"Bot error: {e}")
             if trading_bot:
@@ -87,4 +84,4 @@ def run_bot_loop():
             time.sleep(60)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
