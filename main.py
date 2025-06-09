@@ -46,6 +46,8 @@ def get_signals():
 
 @app.route('/api/start_bot', methods=['POST'])
 def start_bot():
+    send_telegram_message("🟢 Bot iniciado correctamente. Probando conexión con Telegram.")
+
     global trading_bot, bot_thread, bot_running
     
     if bot_running:
