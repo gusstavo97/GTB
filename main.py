@@ -13,7 +13,7 @@ bot_running = False
 
 @app.route('/')
 def index():
-    return "<h2>🚀 Bot de Trading EMA 13/55 - ONLINE</h2>"
+    return "Bot de Trading EMA 13/55 en funcionamiento. Usa la API para interactuar."
 
 @app.route('/api/status')
 def get_status():
@@ -52,10 +52,11 @@ def start_bot():
         return jsonify({'error': 'Bot is already running'}), 400
 
     try:
-        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-        chat_id = int(os.getenv('TELEGRAM_CHAT_ID'))
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN', 'TU_TOKEN')
+        chat_id = int(os.getenv('TELEGRAM_CHAT_ID', '5253696321'))
+        coingecko_api_key = os.getenv('COINGECKO_API_KEY', 'TU_API_KEY')
 
-        trading_bot = TradingBot(bot_token, chat_id)
+        trading_bot = TradingBot(bot_token, chat_id, coingecko_api_key)
         bot_running = True
 
         bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
