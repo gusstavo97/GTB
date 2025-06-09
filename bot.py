@@ -1,233 +1,137 @@
-import pandas as pd
 import time
 import requests
-from ta.volatility import AverageTrueRange
-from ta.trend import EMAIndicator
-from datetime import datetime, timedelta
+import pandas as pd
+import os
+import numpy as np
 
 class TradingBot:
     def __init__(self, bot_token, chat_id):
         self.bot_token = bot_token
         self.chat_id = chat_id
+        self.coingecko_api_key = os.getenv('COINGECKO_API_KEY')
+        if self.coingecko_api_key:
+            self.coingecko_api_key = self.coingecko_api_key.strip()
+
         self.last_check = None
         self.last_signal = None
         self.error_count = 0
         self.recent_signals = []
-        # Use CoinGecko API (free, global, no restrictions)
-        self.base_url = "https://api.coingecko.com/api/v3"
 
-    def send_telegram_message(text):
-    """Send message to Telegram bot"""
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown"
-    }
-
-    try:
-        response = requests.post(url, data=payload)
-        if response.status_code == 200:
-            print("✅ Mensaje enviado a Telegram")
-        else:
-            print(f"❌ Error enviando mensaje a Telegram: {response.status_code}")
-            print(f"➡️ Respuesta: {response.text}")
-            if response.status_code == 403:
-                print("🚫 El bot no tiene permiso para enviarte mensajes. ¿Le diste /start en Telegram?")
-            if response.status_code == 400:
-                print("📛 Verifica que el chat_id esté bien escrito.")
-    except Exception as e:
-        print(f"❌ Excepción enviando mensaje a Telegram: {e}")
-
-
-
-    def fetch_ohlcv(self):
-        """Fetch OHLCV data from CoinGecko"""
+    def send_telegram_message(self, text):
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        payload = {
+            "chat_id": self.chat_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        }
         try:
-            # Get historical data for the last 7 days with hourly intervals
-            url = f"{self.base_url}/coins/bitcoin/market_chart"
-            params = {
-                'vs_currency': 'usd',
-                'days': '7',
-                'interval': 'hourly'
-            }
-            
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Convert to OHLCV format
-            prices = data['prices']
-            volumes = data['total_volumes']
-            
-            # Create DataFrame with price data
-            df_data = []
-            for i in range(len(prices)):
-                timestamp = prices[i][0]
-                price = prices[i][1]
-                volume = volumes[i][1] if i < len(volumes) else 0
-                
-                df_data.append({
-                    'timestamp': timestamp,
-                    'open': price,
-                    'high': price,
-                    'low': price,
-                    'close': price,
-                    'volume': volume
-                })
-            
-            df = pd.DataFrame(df_data)
-            df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('datetime', inplace=True)
-            
-            # Keep last 100 records
-            return df.tail(100)
-            
+            response = requests.post(url, data=payload)
+            if response.status_code == 200:
+                print("✅ Mensaje enviado a Telegram")
+            else:
+                print(f"❌ Error enviando mensaje a Telegram: {response.status_code}")
+                print(f"➡️ Respuesta: {response.text}")
+                if response.status_code == 403:
+                    print("🚫 El bot no tiene permiso para enviarte mensajes. ¿Le diste /start en Telegram?")
+                if response.status_code == 400:
+                    print("📛 Verifica que el chat_id esté bien escrito.")
+        except Exception as e:
+            print(f"❌ Excepción enviando mensaje a Telegram: {e}")
+
+    def get_price_history(self):
+        url = 'https://api.coingecko.com/api/v3/coins/bitcoin/ohlc'
+        params = {'vs_currency': 'usd', 'days': '30'}
+        headers = {}
+        if self.coingecko_api_key:
+            headers['x-cg-demo-api-key'] = self.coingecko_api_key
+
+        try:
+            response = requests.get(url, params=params, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
+                df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
+                df.set_index('datetime', inplace=True)
+                df['price'] = df['close']
+                return df
+            else:
+                raise Exception(f"Error fetching OHLCV data: {response.status_code} {response.text}")
         except Exception as e:
             print(f"Error fetching OHLCV data: {e}")
-            raise
+            return pd.DataFrame()
 
     def get_current_price(self):
-        """Get current BTC/USD price and basic info"""
+        url = 'https://api.coingecko.com/api/v3/simple/price'
+        params = {
+            'ids': 'bitcoin',
+            'vs_currencies': 'usd',
+            'include_24hr_change': 'true',
+            'include_24hr_vol': 'true'
+        }
+        headers = {}
+        if self.coingecko_api_key:
+            headers['x-cg-demo-api-key'] = self.coingecko_api_key
+
         try:
-            # Get current price and market data
-            url = f"{self.base_url}/simple/price"
-            params = {
-                'ids': 'bitcoin',
-                'vs_currencies': 'usd',
-                'include_24hr_change': 'true',
-                'include_24hr_vol': 'true'
-            }
-            
-            response = requests.get(url, params=params)
-            response.raise_for_status()
-            price_data = response.json()
-            
-            bitcoin_data = price_data['bitcoin']
-            current_price = bitcoin_data['usd']
-            change_24h = bitcoin_data.get('usd_24h_change', 0)
-            volume_24h = bitcoin_data.get('usd_24h_vol', 0)
-            
-            # Get historical data for indicators
-            df = self.fetch_ohlcv()
-            
-            # Calculate indicators
-            close_series = df['close'].astype(float)
-            high_series = df['high'].astype(float)
-            low_series = df['low'].astype(float)
-            
-            df['ema_13'] = EMAIndicator(close=close_series, window=13).ema_indicator()
-            df['ema_55'] = EMAIndicator(close=close_series, window=55).ema_indicator()
-            df['atr'] = AverageTrueRange(high=high_series, low=low_series, close=close_series, window=14).average_true_range()
-            
-            last = df.iloc[-1]
-            
-            return {
-                'price': current_price,
-                'change_24h': change_24h,
-                'volume_24h': volume_24h,
-                'ema_13': float(last['ema_13']),
-                'ema_55': float(last['ema_55']),
-                'atr': float(last['atr']),
-                'timestamp': datetime.now().isoformat()
-            }
+            response = requests.get(url, params=params, headers=headers)
+            if response.status_code == 200:
+                return response.json()['bitcoin']
+            else:
+                raise Exception(f"Error getting current price: {response.status_code} {response.text}")
         except Exception as e:
             print(f"Error getting current price: {e}")
             raise
 
+    def calculate_atr(self, df, period=14):
+        high_low = df['high'] - df['low']
+        high_close = np.abs(df['high'] - df['close'].shift())
+        low_close = np.abs(df['low'] - df['close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        atr = true_range.rolling(period).mean()
+        return atr
+
+    def calculate_sl_tp(self, price, signal, atr):
+        if signal == 'LONG':
+            return price - atr, price + 2 * atr
+        elif signal == 'SHORT':
+            return price + atr, price - 2 * atr
+        return None, None
+
     def check_signal(self):
-        """Check for trading signals"""
-        try:
-            df = self.fetch_ohlcv()
-            
-            # Calculate indicators
-            close_series = df['close'].astype(float)
-            high_series = df['high'].astype(float)
-            low_series = df['low'].astype(float)
-            
-            df['ema_13'] = EMAIndicator(close=close_series, window=13).ema_indicator()
-            df['ema_55'] = EMAIndicator(close=close_series, window=55).ema_indicator()
-            df['atr'] = AverageTrueRange(high=high_series, low=low_series, close=close_series, window=14).average_true_range()
+        df = self.get_price_history()
+        if df.empty or len(df) < 55:
+            print("❌ No hay suficientes datos para calcular señales")
+            return
 
-            last = df.iloc[-1]
-            prev = df.iloc[-2]
-            
-            self.last_check = datetime.now().isoformat()
+        df['ema_13'] = df['price'].ewm(span=13, adjust=False).mean()
+        df['ema_55'] = df['price'].ewm(span=55, adjust=False).mean()
+        df['atr'] = self.calculate_atr(df)
 
-            print(f"[{pd.Timestamp.now()}] Revisando señal...")
+        last = df.iloc[-1]
+        prev = df.iloc[-2]
+        price = last['price']
+        atr = last['atr']
 
-            signal_detected = False
+        self.last_check = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        signal = None
 
-            # Check for LONG signal (EMA 13 crosses above EMA 55)
-            if prev['ema_13'] < prev['ema_55'] and last['ema_13'] > last['ema_55']:
-                entry = last['close']
-                sl = entry - last['atr']
-                tp = entry + 2 * last['atr']
-                
-                signal_data = {
-                    'type': 'LONG',
-                    'timestamp': datetime.now().isoformat(),
-                    'entry': float(entry),
-                    'stop_loss': float(sl),
-                    'take_profit': float(tp),
-                    'atr': float(last['atr'])
-                }
-                
-                message = (
-                    "📈 *Señal de COMPRA (LONG)*\n"
-                    f"🔹 Precio actual: {entry:.2f}\n"
-                    f"🔹 EMA 13 cruzó sobre EMA 55\n"
-                    f"🔹 SL: {sl:.2f}, TP: {tp:.2f}\n"
-                    f"📊 *Recomendación*: Oportunidad inmediata si hay volumen.\n"
-                )
-                
-                print("✅ Señal LONG detectada")
-                self.send_telegram_message(message)
-                self.last_signal = signal_data
-                self.recent_signals.append(signal_data)
-                signal_detected = True
+        if prev['ema_13'] < prev['ema_55'] and last['ema_13'] > last['ema_55']:
+            signal = "LONG"
+        elif prev['ema_13'] > prev['ema_55'] and last['ema_13'] < last['ema_55']:
+            signal = "SHORT"
 
-            # Check for SHORT signal (EMA 13 crosses below EMA 55)
-            elif prev['ema_13'] > prev['ema_55'] and last['ema_13'] < last['ema_55']:
-                entry = last['close']
-                sl = entry + last['atr']
-                tp = entry - 2 * last['atr']
-                
-                signal_data = {
-                    'type': 'SHORT',
-                    'timestamp': datetime.now().isoformat(),
-                    'entry': float(entry),
-                    'stop_loss': float(sl),
-                    'take_profit': float(tp),
-                    'atr': float(last['atr'])
-                }
-                
-                message = (
-                    "📉 *Señal de VENTA (SHORT)*\n"
-                    f"🔹 Precio actual: {entry:.2f}\n"
-                    f"🔹 EMA 13 cruzó bajo EMA 55\n"
-                    f"🔹 SL: {sl:.2f}, TP: {tp:.2f}\n"
-                    f"📊 *Recomendación*: Momentum bajista confirmado.\n"
-                )
-                
-                print("✅ Señal SHORT detectada")
-                self.send_telegram_message(message)
-                self.last_signal = signal_data
-                self.recent_signals.append(signal_data)
-                signal_detected = True
-
-            if not signal_detected:
-                print("⏳ No hay señal en este momento")
-
-            # Keep only last 10 signals
-            if len(self.recent_signals) > 10:
-                self.recent_signals = self.recent_signals[-10:]
-
-        except Exception as e:
-            print(f"❌ Error in check_signal: {e}")
-            self.error_count += 1
-            raise
+        if signal:
+            sl, tp = self.calculate_sl_tp(price, signal, atr)
+            msg = f"{'📈' if signal == 'LONG' else '📉'} *Señal {signal} Detectada*
+"
+            msg += f"\nPrecio: ${price:.2f}\nEMA13: ${last['ema_13']:.2f} | EMA55: ${last['ema_55']:.2f}\n"
+            msg += f"ATR: ${atr:.2f}\nSL: ${sl:.2f} | TP: ${tp:.2f} (R:R 1:2)"
+            self.send_telegram_message(msg)
+            self.last_signal = signal
+            self.recent_signals.append({'timestamp': self.last_check, 'signal': signal, 'price': price})
+        else:
+            print("⏳ No hay señal en este momento")
 
     def get_recent_signals(self):
-        """Get list of recent signals"""
-        return list(reversed(self.recent_signals))  # Most recent first
+        return self.recent_signals[-10:]
