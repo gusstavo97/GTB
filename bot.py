@@ -16,20 +16,29 @@ class TradingBot:
         # Use CoinGecko API (free, global, no restrictions)
         self.base_url = "https://api.coingecko.com/api/v3"
 
-    def send_telegram_message(self, text):
-        """Send message to Telegram"""
-        try:
-            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-            payload = {
-                "chat_id": self.chat_id,
-                "text": text,
-                "parse_mode": "Markdown"
-            }
-            response = requests.post(url, data=payload)
-            return response.status_code == 200
-        except Exception as e:
-            print(f"Error sending Telegram message: {e}")
-            return False
+    def send_telegram_message(text):
+    """Send message to Telegram bot"""
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown"
+    }
+
+    try:
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            print("✅ Mensaje enviado a Telegram")
+        else:
+            print(f"❌ Error enviando mensaje a Telegram: {response.status_code}")
+            print(f"➡️ Respuesta: {response.text}")
+            if response.status_code == 403:
+                print("🚫 El bot no tiene permiso para enviarte mensajes. ¿Le diste /start en Telegram?")
+            if response.status_code == 400:
+                print("📛 Verifica que el chat_id esté bien escrito.")
+    except Exception as e:
+        print(f"❌ Excepción enviando mensaje a Telegram: {e}")
+
 
     def fetch_ohlcv(self):
         """Fetch OHLCV data from CoinGecko"""
