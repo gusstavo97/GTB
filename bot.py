@@ -40,6 +40,7 @@ class TradingBot:
         print(f"❌ Excepción enviando mensaje a Telegram: {e}")
 
 
+
     def fetch_ohlcv(self):
         """Fetch OHLCV data from CoinGecko"""
         try:
